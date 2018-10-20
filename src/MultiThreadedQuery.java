@@ -1,67 +1,151 @@
-import java.io.Serializable;
 import java.util.ArrayList;
 
 class PanCountTask implements Runnable {
 
+    private Thread t;
     private int localCounter = 0;
-    private int start;
-    private int end;
-    private ArrayList<Block> blockchain;
     private String panDetails;
+    private State state;
+    private int transactionsPerThread;
+    private ArrayList<Transaction> transactions;
 
-    public PanCountTask(int start, int end, ArrayList<Block> blockchain, String panDetails){
-        this.start = start;
-        this.end = end;
-        this.blockchain = blockchain;
+    public PanCountTask(State state, String panDetails, int transactionsPerThread, ArrayList<Transaction> transactions){
+        this.transactions = transactions;
+        this.state = state;
         this.panDetails = panDetails;
+        this.transactionsPerThread = transactionsPerThread;
+        t = new Thread(this);
+        t.start();
+    }
+
+    public Thread getT() {
+        return t;
     }
 
     public void run(){
-        for(int i = start; i <= end; i++){
-            ArrayList<Transaction> transactions = blockchain.get(i).getTransactions();
-            for(int j = 0; j < transactions.size(); j++){
-                if(transactions.get(j).getBuyerId().getPanDetails().equals(panDetails)
-                        || transactions.get(j).getSellerId().getPanDetails().equals(panDetails))
-                    localCounter++;
+
+        while(true) {
+            int entry;
+            while ((entry = state.getNextBlock()) == -1) ;
+            if (entry == -2)
+                return;
+            for (int i = entry * transactionsPerThread; i < entry * transactionsPerThread+ transactionsPerThread
+                    && i < transactions.size(); i++) {
+                    if (transactions.get(i).getBuyerId().getPanDetails().equals(panDetails)
+                            || transactions.get(i).getSellerId().getPanDetails().equals(panDetails))
+                        localCounter++;
+                }
             }
-        }
     }
+
 
     public int getCounter() {
         return localCounter;
     }
 }
 
-public class MultiThreadedQuery implements BlockchainQuery, Serializable {
+class TransactionProducer implements Runnable{
 
-    private int threadCount;
+    private Thread t;
+    private int transactionsPerThread;
+    private ArrayList<Transaction> transactions;
+    private BlockChainReader blockChainReader;
+    private State state ;
 
-    public MultiThreadedQuery(int threadCount) {
-        this.threadCount = threadCount;
+    public TransactionProducer(int transactionsPerThread, ArrayList<Transaction> transactions,
+                               BlockChainReader blockChainReader, State state){
+        this.transactionsPerThread = transactionsPerThread;
+        this.transactions = transactions;
+        this.blockChainReader = blockChainReader;
+        this.state = state;
+        t = new Thread(this);
+        t.start();
     }
 
-    public int panCount(ArrayList<Block> blockchain, String panDetails) {
+    public Thread getT() {
+        return t;
+    }
+
+    public void run() {
+        Transaction transaction;
+        int counter = 0;
+        while((transaction = blockChainReader.getNextTransaction()) != null){
+            transactions.add(transaction);
+            counter++;
+            if(counter == transactionsPerThread){
+                state.incrementAvailabeBlocks();
+                counter = 0;
+            }
+        }
+
+        if(counter != 0)
+            state.incrementAvailabeBlocks();
+
+        state.setFinished();
+    }
+}
+
+class State {
+
+    private int availableBlocks = 0;
+    private int nextBlock = 0;
+    private boolean finished = false;
+
+    public void incrementAvailabeBlocks(){
+        availableBlocks ++;
+    }
+
+    public void setFinished(){
+        finished = true;
+    }
+
+    synchronized public int getNextBlock(){
+        if(finished)
+            return -2;
+        if(nextBlock == availableBlocks)
+            return -1;
+        return nextBlock ++;
+    }
+}
+
+
+public class MultiThreadedQuery implements BlockchainQuery {
+
+    private int threadCount;
+    private int transactionsPerThread;
+    private State state ;
+    private ArrayList<Transaction> transactions = new ArrayList<>();
+
+    public MultiThreadedQuery(int threadCount, int transactionsPerThread) {
+        this.transactionsPerThread = transactionsPerThread;
+        this.threadCount = threadCount;
+        this.state = new State();
+    }
+
+    public int panCount(BlockChainReader blockChainReader, String panDetails) {
         PanCountTask[] panCountTasks = new PanCountTask[threadCount];
-        Thread[] threads = new Thread[threadCount];
-        int size = blockchain.size() / threadCount;
-        int tid = 0, en = -1;
-        while (tid < threadCount - 1) {
-            panCountTasks[tid] = new PanCountTask(en + 1, en + size, blockchain, panDetails);
-            en += size;
-            tid++;
+
+        for(int tid = 0; tid < threadCount; tid++) {
+            panCountTasks[tid] = new PanCountTask(state, panDetails, transactionsPerThread, transactions);
         }
-        panCountTasks[tid] = new PanCountTask(en + 1, blockchain.size() - 1, blockchain, panDetails);
-        for (int i = 0; i < threadCount; i++) {
-            threads[i] = new Thread(panCountTasks[i]);
-            threads[i].start();
-        }
+
+        TransactionProducer transactionProducer = new TransactionProducer(transactionsPerThread, transactions,
+                blockChainReader, state);
+
         for (int i = 0; i < threadCount; i++) {
             try {
-                threads[i].join();
+                panCountTasks[i].getT().join();
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
         }
+
+        try {
+            transactionProducer.getT().join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
         int count = 0;
         for (int i = 0; i < threadCount; i++) {
             count += panCountTasks[i].getCounter();
