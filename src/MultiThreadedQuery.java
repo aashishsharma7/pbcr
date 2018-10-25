@@ -100,7 +100,7 @@ class State {
     }
 
     synchronized public int getNextBlock(){
-        if(finished)
+        if(finished && nextBlock == availableBlocks)
             return -2;
         if(nextBlock == availableBlocks)
             return -1;
