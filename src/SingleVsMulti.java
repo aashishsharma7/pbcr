@@ -22,14 +22,17 @@ public class SingleVsMulti {
             }
 */
         IPFS ipfs = new IPFS("/ip4/127.0.0.1/tcp/5001");
-        BlockChainReader blockChainReader = new IPFSBlockChainReader(
-                "1220709C6315EBD94498A296403216223EB6B4DC8B14A2BA998CB5B6906DFA494B9A", ipfs);
-        BlockchainQuery blockchainQuery = new MultiThreadedQuery(2, 100);
-        long startTime = System.nanoTime();
-        int count = blockchainQuery.panCount(blockChainReader, "97324985");
-        long endTime = System.nanoTime();
-        System.out.println("Time taken is " + (endTime - startTime));
-        System.out.println("Total Pan Count is " + count);
+        for(int x = 1; x <= 8; x++) {
+            BlockChainReader blockChainReader = new IPFSBlockChainReader(
+                    "1220709C6315EBD94498A296403216223EB6B4DC8B14A2BA998CB5B6906DFA494B9A", ipfs);
+            BlockchainQuery blockchainQuery = new MultiThreadedQuery(x, 10000);
+            long startTime = System.nanoTime();
+            for(int y = 0; y < 50 ; y++) {
+                int count = blockchainQuery.panCount(blockChainReader, "97324985");
+            }
+            long endTime = System.nanoTime();
+            System.out.println("" + (endTime - startTime));
+        }
         /*Gson gson = new Gson();
         Block gen = new Block(0,(new Date()).toString(),null,null,null);
         String blockInJson = gson.toJson(gen);

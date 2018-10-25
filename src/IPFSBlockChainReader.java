@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import io.ipfs.multihash.Multihash;
 
 public class IPFSBlockChainReader implements BlockChainReader{
+
     private String prevHexCode;
     private IPFS ipfs;
     private ArrayList<Transaction> transactions;
@@ -33,6 +34,8 @@ public class IPFSBlockChainReader implements BlockChainReader{
 
     }
     public Transaction getNextTransaction(){
+        if(transactions == null)
+            return null;
         if(curTransaction < transactions.size())
             return transactions.get(curTransaction++);
         byte[] arr = new byte[0];

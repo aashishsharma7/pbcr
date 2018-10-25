@@ -99,6 +99,8 @@ class State {
         finished = true;
     }
 
+    public void resetNextBlock() { nextBlock = 0; };
+
     synchronized public int getNextBlock(){
         if(finished && nextBlock == availableBlocks)
             return -2;
@@ -123,6 +125,9 @@ public class MultiThreadedQuery implements BlockchainQuery {
     }
 
     public int panCount(BlockChainReader blockChainReader, String panDetails) {
+
+        state.resetNextBlock();
+
         PanCountTask[] panCountTasks = new PanCountTask[threadCount];
 
         for(int tid = 0; tid < threadCount; tid++) {
